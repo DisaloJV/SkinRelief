@@ -1,0 +1,96 @@
+#include "DHT.h"
+
+// Pines de sensores FSR
+const int fsrPins[3] = {32, 33, 34};  // FSR1, FSR2, FSR3
+int fsrValues[3];
+unsigned long pressureStart[3] = {0, 0, 0};
+unsigned long pressureDuration[3] = {0, 0, 0};
+const int pressureThreshold = 1000;  // Umbral modificado a 1000
+
+// Tiempo configurable para activar actuadores
+const unsigned long tiempoActivacionMs = 15000;  // 15 segundos
+
+// Sensor DHT11 solo temperatura
+#define DHTPIN 21
+#define DHTTYPE DHT11
+DHT dht(DHTPIN, DHTTYPE);
+float temperature = 0.0;
+
+// Pines de actuadores
+#define MOTOR_PIN 18
+#define BOMB_PIN 17
+
+// Control de activación de actuadores
+bool actuadoresActivos = false;
+unsigned long actuacionInicio = 0;
+
+void setup() {
+  Serial.begin(115200);
+  for (int i = 0; i < 3; i++) pinMode(fsrPins[i], INPUT);
+  pinMode(MOTOR_PIN, OUTPUT);
+  pinMode(BOMB_PIN, OUTPUT);
+  digitalWrite(MOTOR_PIN, LOW);
+  digitalWrite(BOMB_PIN, LOW);
+  dht.begin();
+
+  Serial.println("FSR1\tFSR2\tFSR3\tTiempo1\tTiempo2\tTiempo3\tTempC");
+}
+
+void loop() {
+  unsigned long ahora = millis();
+  bool activarActuadores = false;
+
+  // Leer FSRs
+  for (int i = 0; i < 3; i++) {
+    fsrValues[i] = analogRead(fsrPins[i]);
+
+    if (fsrValues[i] > pressureThreshold) {
+      if (pressureStart[i] == 0)
+        pressureStart[i] = ahora;
+      pressureDuration[i] = ahora - pressureStart[i];
+    } else {
+      pressureStart[i] = 0;
+      pressureDuration[i] = 0;
+    }
+
+    if (pressureDuration[i] > tiempoActivacionMs) activarActuadores = true;
+  }
+
+  // Leer temperatura
+  temperature = dht.readTemperature();
+
+  // Activar actuadores solo si aún no están activos
+  if (activarActuadores && !actuadoresActivos) {
+    actuadoresActivos = true;
+    actuacionInicio = ahora;
+    digitalWrite(MOTOR_PIN, HIGH);
+    digitalWrite(BOMB_PIN, HIGH);
+  }
+
+  // Apagar bomba después de 6 segundos
+  if (actuadoresActivos && ahora - actuacionInicio >= 6000) {
+    digitalWrite(BOMB_PIN, LOW);
+  }
+
+  // Apagar motor después de 10 segundos
+  if (actuadoresActivos && ahora - actuacionInicio >= 10000) {
+    digitalWrite(MOTOR_PIN, LOW);
+    actuadoresActivos = false; // Listo para una nueva activación futura
+    // Reiniciar contadores para evitar reactivación continua
+    for (int i = 0; i < 3; i++) {
+      pressureStart[i] = 0;
+      pressureDuration[i] = 0;
+    }
+  }
+
+  // Imprimir valores separados por tabuladores
+  Serial.print(fsrValues[0]); Serial.print("\t");
+  Serial.print(fsrValues[1]); Serial.print("\t");
+  Serial.print(fsrValues[2]); Serial.print("\t");
+  Serial.print(pressureDuration[0] / 1000); Serial.print("\t");
+  Serial.print(pressureDuration[1] / 1000); Serial.print("\t");
+  Serial.print(pressureDuration[2] / 1000); Serial.print("\t");
+  Serial.println(temperature);
+
+  delay(500);
+}
