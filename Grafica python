@@ -1,0 +1,74 @@
+import serial
+import matplotlib.pyplot as plt
+from datetime import datetime
+import csv
+import time
+
+print("Conectando al ESP32...")
+
+ser = serial.Serial("COM4", 115200, timeout=3)  # Cambia "COM4" si es otro puerto
+
+# Evitar reinicio automático
+ser.setDTR(False)
+time.sleep(1)
+ser.flushInput()
+ser.setDTR(True)
+
+print("Conectado al ESP32\n")
+
+# Inicializar listas
+fsr1_list = []
+fsr2_list = []
+fsr3_list = []
+t_list = []
+
+# Crear archivo CSV
+with open("datos.csv", mode="w", newline="") as file:
+    writer = csv.writer(file)
+    writer.writerow(["Hora", "FSR1", "FSR2", "FSR3"])
+
+    plt.ion()  # Modo interactivo
+    fig, ax = plt.subplots()
+
+    while True:
+        try:
+            # Leer línea del puerto serial
+            line = ser.readline().decode(errors='ignore').strip()
+
+            # Ignorar encabezados o líneas inválidas
+            if not line or "FSR1" in line or line.count('\t') < 6:
+                continue
+
+            print(line)
+            data = line.split('\t')
+
+            # Procesar datos
+            fsr1, fsr2, fsr3 = int(data[0]), int(data[1]), int(data[2])
+            timestamp = datetime.now().strftime("%H:%M:%S")
+
+            # Guardar en listas
+            fsr1_list.append(fsr1)
+            fsr2_list.append(fsr2)
+            fsr3_list.append(fsr3)
+            t_list.append(timestamp)
+
+            # Escribir en CSV
+            writer.writerow([timestamp, fsr1, fsr2, fsr3])
+            file.flush()
+
+            # Graficar
+            ax.clear()
+            ax.plot(t_list, fsr1_list, label="FSR1")
+            ax.plot(t_list, fsr2_list, label="FSR2")
+            ax.plot(t_list, fsr3_list, label="FSR3")
+            ax.set_ylabel("Presión (ADC)")
+            ax.set_xlabel("Hora")
+            ax.set_title("Presión en sensores FSR")
+            ax.legend()
+            plt.xticks(rotation=45)
+            plt.pause(0.01)
+
+        except KeyboardInterrupt:
+            print("\nInterrupción del usuario. Cerrando puerto y finalizando.")
+            ser.close()
+            break
